@@ -4,9 +4,9 @@ Intent classification, grounded reply drafting, and escalation routing over the
 [Customer Support on Twitter](https://www.kaggle.com/datasets/thoughtvector/customer-support-on-twitter)
 dataset (~2.8M tweets).
 
-**Status: work in progress.** Brand selection, intent taxonomy and the
-escalation policy are done and measured. The reply generator and the evaluation
-harness are not built yet.
+**Status: work in progress.** Brand selection, intent taxonomy, escalation
+policy, retrieval and reply generation are done and measured. The evaluation
+harness and the human-labelled golden set are not done yet.
 
 ---
 
@@ -119,6 +119,51 @@ Because of this, **unweighted accuracy over the golden set is not population
 accuracy**. Every row carries `weight = population_share / sample_share`, and
 results are reported both per-stratum and weight-corrected.
 
+## Retrieval and reply generation
+
+`build_pairs.py` joins inbound tweets to AmazonHelp's actual replies via
+`response_tweet_id`, producing **77,972 pairs, of which 16,606 are openers**.
+Only openers are indexed: mid-thread turns assume context the retriever will
+not have at query time ("yes, the second one"). Pleasantries are dropped —
+*"Ok, thanks for your help"* → *"Not a problem!"* is real conversation carrying
+no resolution.
+
+`retrieve.py` indexes with TF-IDF → LSA → cosine nearest neighbours. It serves
+two purposes, and the second is easy to miss: it supplies precedents to the
+generator, **and** the grounding score that escalation gate 4 depends on.
+
+```
+QUERY: charged twice for prime membership this month
+grounding: 0.928  [gate 4: PASS]
+  [1] 0.928  Q: y'all charged me twice for my prime membership ...
+             A: I'm sorry to hear this. We'd be happy to check on this with you here: ^AF
+
+QUERY: asdkjh random gibberish nothing to do with anything
+grounding: 0.440  [gate 4: FAIL -> escalate (no precedent)]
+```
+
+`reply.py` implements three tiers so the system has something to beat:
+
+| Tier | Method | Needs an LLM |
+|---|---|---|
+| `trivial` | one canned reply for everything | no |
+| `nearest_neighbour` | Amazon's actual historical reply, verbatim | no |
+| `grounded_llm` | composed from top-k precedents | yes |
+
+### Two findings already visible
+
+**The nearest-neighbour baseline leaks personalisation.** Asked about a missing
+parcel it returns *"I am sorry this has not turned up yet, **Emma**. Was this
+marked as delivered today?"* — the previous customer's name, addressed to a new
+one. A concrete failure mode, not a hypothetical.
+
+**The grounding corpus is mostly soft redirects.** Even after filtering explicit
+DM deflections, Amazon's public replies overwhelmingly acknowledge and then move
+the conversation elsewhere: *"please reach out here"*, *"give us a ring or chat
+here"*. A generator grounded in these learns to deflect politely, and will score
+well against a judge rewarding tone and groundedness **while resolving nothing**.
+No automated metric in this repo can see that.
+
 ## Layout
 
 ```
@@ -126,9 +171,15 @@ brand_stats.py       streaming volume/thread stats per brand
 deflection.py        DM-deflection and substantiveness per brand
 extract_openers.py   conversation openers -> TSV
 cluster_intents.py   TF-IDF -> LSA -> k-means, taxonomy evidence
-label_intents.py     LLM labelling (Anthropic / OpenAI / Ollama), batched + resumable
+llm.py               multi-provider LLM client (Anthropic / OpenAI / Ollama)
+label_intents.py     LLM labelling, batched + resumable + token accounting
 escalation.py        four-gate auto-vs-escalate policy with stated reasons
+build_pairs.py       (customer -> Amazon reply) grounding corpus
+retrieve.py          TF-IDF -> LSA -> cosine retrieval; supplies grounding score
+reply.py             three reply tiers: trivial / nearest-neighbour / grounded LLM
 sample_golden.py     stratified + weighted golden-set sampler
+annotate.py          keyboard-driven human annotation, two rounds
+agreement.py         Cohen's kappa self-agreement + confusable pairs
 scripts/fetch_data.sh
 ```
 
@@ -137,7 +188,6 @@ All heavy passes stream the CSV row by row and hold only counters — the full
 
 ## Not done yet
 
-- Reply generator (retrieval over historical resolutions)
 - Evaluation harness: intent macro-F1, LLM-as-judge rubric, judge↔human agreement
-- Two baselines (trivial, and TF-IDF/nearest-neighbour)
-- Failure analysis
+- Human annotation of the golden set (250 messages, two blind rounds)
+- Failure analysis over measured results

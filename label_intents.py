@@ -36,9 +36,10 @@ import random
 import sys
 import time
 import urllib.error
-import urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
+
+from llm import BACKENDS, Client
 
 HERE = Path(__file__).parent
 CLUSTERS = HERE / "data" / "amazon_clusters.tsv"
@@ -127,82 +128,6 @@ def build_prompt(batch: list[tuple[str, str]]) -> str:
 # --------------------------------------------------------------------------
 # Backends
 # --------------------------------------------------------------------------
-def _post(url: str, payload: dict, headers: dict, timeout: int = 180) -> dict:
-    req = urllib.request.Request(
-        url, data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", **headers},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
-
-
-def call_anthropic(prompt: str, model: str) -> tuple[str, int, int]:
-    r = _post(
-        "https://api.anthropic.com/v1/messages",
-        {
-            "model": model, "max_tokens": 4096, "temperature": 0,
-            "system": SYSTEM,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        {"x-api-key": os.environ["ANTHROPIC_API_KEY"],
-         "anthropic-version": "2023-06-01"},
-    )
-    u = r.get("usage", {})
-    return r["content"][0]["text"], u.get("input_tokens", 0), u.get("output_tokens", 0)
-
-
-def call_openai(prompt: str, model: str) -> tuple[str, int, int]:
-    r = _post(
-        "https://api.openai.com/v1/chat/completions",
-        {
-            "model": model, "temperature": 0,
-            "messages": [{"role": "system", "content": SYSTEM},
-                         {"role": "user", "content": prompt}],
-        },
-        {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
-    )
-    u = r.get("usage", {})
-    return (r["choices"][0]["message"]["content"],
-            u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
-
-
-def call_ollama(prompt: str, model: str) -> tuple[str, int, int]:
-    r = _post(
-        "http://127.0.0.1:11434/api/chat",
-        {
-            "model": model, "stream": False,
-            "options": {"temperature": 0},
-            "messages": [{"role": "system", "content": SYSTEM},
-                         {"role": "user", "content": prompt}],
-        },
-        {}, timeout=600,
-    )
-    return (r["message"]["content"],
-            r.get("prompt_eval_count", 0), r.get("eval_count", 0))
-
-
-BACKENDS = {
-    "anthropic": (call_anthropic, "claude-haiku-4-5-20251001", "ANTHROPIC_API_KEY"),
-    "openai": (call_openai, "gpt-4o-mini", "OPENAI_API_KEY"),
-    "ollama": (call_ollama, "qwen2.5:7b", None),
-}
-
-
-def detect_backend() -> str:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "anthropic"
-    if os.environ.get("OPENAI_API_KEY"):
-        return "openai"
-    try:
-        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3)
-        return "ollama"
-    except Exception:
-        raise SystemExit(
-            "No backend available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, "
-            "or run Ollama with a model pulled (ollama pull qwen2.5:7b)."
-        )
-
-
 def parse_response(raw: str, batch: list[tuple[str, str]]) -> list[dict]:
     """Tolerant JSON extraction - models wrap arrays in prose or fences."""
     s = raw.strip()
@@ -290,31 +215,8 @@ def main() -> int:
         print(f"\n({len(batches)} batches would be sent)")
         return 0
 
-    backend = args.backend or detect_backend()
-    fn, default_model, _ = BACKENDS[backend]
-    model = args.model or default_model
-
-    # Ollama answers /api/tags even with nothing pulled, so a reachable server
-    # is not a usable one. Check before spending retries on every batch.
-    if backend == "ollama":
-        try:
-            with urllib.request.urlopen(
-                "http://127.0.0.1:11434/api/tags", timeout=5
-            ) as r:
-                have = [m["name"] for m in json.loads(r.read()).get("models", [])]
-        except Exception as e:
-            raise SystemExit(f"Ollama unreachable: {e}")
-        if not have:
-            raise SystemExit(
-                "Ollama is running but has no models pulled.\n"
-                f"  Run:  ollama pull {model}\n"
-                "  Or use an API key instead (ANTHROPIC_API_KEY / OPENAI_API_KEY)."
-            )
-        if not any(m == model or m.startswith(model + ":") for m in have):
-            raise SystemExit(
-                f"Model '{model}' not pulled. Available: {', '.join(have)}\n"
-                f"  Run:  ollama pull {model}   (or pass --model <one of the above>)"
-            )
+    client = Client(backend=args.backend, model=args.model)
+    backend, model = client.backend, client.model
 
     print(f"backend={backend}  model={model}  batches={len(batches)}\n")
 
@@ -325,10 +227,10 @@ def main() -> int:
             prompt = build_prompt(batch)
             for attempt in (1, 2, 3):
                 try:
-                    raw, i_tok, o_tok = fn(prompt, model)
+                    raw = client.complete(SYSTEM, prompt, max_tokens=4096, retries=1)
                     rows = parse_response(raw, batch)
-                    tin += i_tok
-                    tout += o_tok
+                    tin = client.usage.input_tokens
+                    tout = client.usage.output_tokens
                     for r in rows:
                         r["model"] = model
                         sink.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -336,8 +238,9 @@ def main() -> int:
                     print(f"  batch {bi}/{len(batches)}  +{len(rows)} labels "
                           f"({tin:,} in / {tout:,} out tokens)")
                     break
-                except (urllib.error.HTTPError, urllib.error.URLError,
-                        ValueError, KeyError, json.JSONDecodeError) as e:
+                except (RuntimeError, urllib.error.HTTPError,
+                        urllib.error.URLError, ValueError, KeyError,
+                        json.JSONDecodeError) as e:
                     if attempt == 3:
                         failed += len(batch)
                         print(f"  batch {bi} FAILED after 3 tries: {e}", file=sys.stderr)
