@@ -1,0 +1,6 @@
+# Normalise line endings. Without this, a Windows checkout rewrites test
+# fixtures and shell scripts to CRLF, which breaks byte-exact comparisons and
+# makes scripts/*.sh unrunnable on Linux.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

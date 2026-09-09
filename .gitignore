@@ -1,0 +1,14 @@
+# Virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# Raw dataset - 516 MB, fetched by scripts/fetch_data.sh, never committed
+data/twcs.csv
+
+# Large derived artefacts - regenerated deterministically from twcs.csv
+data/amazon_openers.tsv
+data/amazon_clusters.tsv
+
+# Local secrets
+.env
