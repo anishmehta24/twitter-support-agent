@@ -39,7 +39,7 @@ import urllib.error
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from llm import BACKENDS, Client
+from llm import BACKENDS, Client, utf8_console
 
 HERE = Path(__file__).parent
 CLUSTERS = HERE / "data" / "amazon_clusters.tsv"
@@ -283,4 +283,5 @@ def summarise() -> int:
 
 
 if __name__ == "__main__":
+    utf8_console()
     raise SystemExit(main())

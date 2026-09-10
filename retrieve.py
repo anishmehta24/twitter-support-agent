@@ -36,6 +36,8 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import Normalizer
 
+from llm import utf8_console
+
 HERE = Path(__file__).parent
 PAIRS = HERE / "data" / "amazon_pairs.jsonl"
 INDEX = HERE / "data" / "retrieval_index.pkl"
@@ -144,4 +146,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    utf8_console()
     main()

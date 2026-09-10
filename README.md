@@ -5,8 +5,10 @@ Intent classification, grounded reply drafting, and escalation routing over the
 dataset (~2.8M tweets).
 
 **Status: work in progress.** Brand selection, intent taxonomy, escalation
-policy, retrieval and reply generation are done and measured. The evaluation
-harness and the human-labelled golden set are not done yet.
+policy, retrieval, reply generation, the end-to-end agent and the evaluation
+harness are built. The golden set is sampled but **not yet hand-labelled**, so
+there are no headline numbers yet - `results/` is empty by design until
+`annotate.py` has been run.
 
 ---
 
@@ -23,7 +25,22 @@ python extract_openers.py                # -> data/amazon_openers.tsv
 python cluster_intents.py                # -> data/amazon_clusters.tsv, taxonomy evidence
 python sample_golden.py                  # -> data/golden_pool.jsonl (250, stratified + weighted)
 python escalation.py                     # policy demo over worked cases
+
+python build_pairs.py                    # -> data/amazon_pairs.jsonl (grounding corpus)
+python agent.py "my parcel says delivered but i never got it"   # end to end
+
+# Evaluation (needs data/golden_r1.jsonl from annotate.py)
+python evaluate.py --skip-replies        # intent + escalation, no LLM needed, ~1 min
+python evaluate.py --limit 60            # + reply drafting and judging on a stratified slice
+python judge.py --human --n 40           # score a blind subset yourself
+python judge.py --agreement              # judge vs human kappa
 ```
+
+LLM backend is auto-detected: `ANTHROPIC_API_KEY`, then `OPENAI_API_KEY`,
+then a local Ollama (`ollama pull qwen2.5:3b`). Without any, `agent.py` and
+`evaluate.py` fall back to the keyword classifier and skip reply drafting.
+All LLM outputs are cached by message id under `data/` so a re-run never
+pays twice.
 
 Everything is seeded. `data/golden_pool.jsonl` is committed so the evaluation
 set is pinned and identical across runs.
@@ -177,17 +194,40 @@ escalation.py        four-gate auto-vs-escalate policy with stated reasons
 build_pairs.py       (customer -> Amazon reply) grounding corpus
 retrieve.py          TF-IDF -> LSA -> cosine retrieval; supplies grounding score
 reply.py             three reply tiers: trivial / nearest-neighbour / grounded LLM
+classify.py          three intent classifiers: majority / keyword / LLM
+agent.py             end to end: classify -> retrieve -> decide -> draft
 sample_golden.py     stratified + weighted golden-set sampler
 annotate.py          keyboard-driven human annotation, two rounds
 agreement.py         Cohen's kappa self-agreement + confusable pairs
+judge.py             LLM-as-judge rubric, blind human scoring, judge-vs-human kappa
+evaluate.py          the harness: intent F1, escalation cost, reply quality -> results/
 scripts/fetch_data.sh
 ```
 
 All heavy passes stream the CSV row by row and hold only counters — the full
 2.8M-row scan runs in well under 1 GB of RAM, with no pandas dependency.
 
+## Evaluation harness
+
+`evaluate.py` scores the three decisions separately, because they fail
+separately:
+
+| Section | What is measured | Baselines |
+|---|---|---|
+| Intent | accuracy and macro-F1, raw and weight-corrected, per stratum; plus a "clean" accuracy over rows the annotator did not flag `multi`/`unsure` | majority class, keyword rules |
+| Escalation | false-auto and false-escalate counted separately and combined at the stated 10:1 cost; run once with the predicted intent and once with the gold intent so classifier error and policy error are not confused | escalate-everything, auto-everything |
+| Replies | four binary rubric checks (grounded, safe, actionable, on-tone) + overall 1-5 from an LLM judge, per tier | trivial canned reply, nearest-neighbour verbatim |
+
+The judge is validated, not trusted: `judge.py --human` shows you a blind,
+tier-hidden subset to score against the same rubric, and `--agreement`
+reports per-criterion Cohen's kappa and the judge's leniency bias. Until that
+has been run, every judge number in `results/` is labelled unvalidated.
+
 ## Not done yet
 
-- Evaluation harness: intent macro-F1, LLM-as-judge rubric, judge↔human agreement
-- Human annotation of the golden set (250 messages, two blind rounds)
-- Failure analysis over measured results
+- **Human annotation of the golden set** (250 messages, two blind rounds) -
+  everything above is built and smoke-tested, but there are no real numbers
+  until this is done
+- Human scoring of ~40 replies for judge validation
+- Report: results vs baselines, top-5 failure modes, "what is misleading about
+  my headline number", decision log

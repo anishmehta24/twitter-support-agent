@@ -33,6 +33,8 @@ import json
 import random
 from pathlib import Path
 
+from llm import utf8_console
+
 HERE = Path(__file__).parent
 POOL = HERE / "data" / "golden_pool.jsonl"
 
@@ -192,4 +194,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    utf8_console()
     main()

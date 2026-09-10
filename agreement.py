@@ -19,6 +19,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from llm import utf8_console
+
 HERE = Path(__file__).parent
 R1 = HERE / "data" / "golden_r1.jsonl"
 R2 = HERE / "data" / "golden_r2.jsonl"
@@ -125,4 +127,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    utf8_console()
     main()

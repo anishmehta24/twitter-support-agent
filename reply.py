@@ -22,8 +22,12 @@ rewards tone and grounding while resolving nothing.
 from __future__ import annotations
 
 import argparse
+import re
 
+from llm import utf8_console
 from retrieve import Retriever
+
+SIGNOFF = re.compile(r"\s*\^[A-Z]{2,3}\b")
 
 TRIVIAL_REPLY = (
     "Sorry for the trouble! Please reach out to us here so we can help: "
@@ -38,6 +42,9 @@ SYSTEM = (
     "- Never invent order numbers, refund amounts, dates, or policies that do "
     "not appear in the precedents.\n"
     "- Never ask the customer to post personal details publicly.\n"
+    "- Never address the customer by a name unless it appears in the NEW "
+    "MESSAGE itself; names in precedents belong to other customers.\n"
+    "- Do not copy agent sign-offs like '^AB' from the precedents.\n"
     "- Under 280 characters. No hashtags. No emoji unless the precedents use them.\n"
     "- If the precedents do not cover the situation, say plainly that a human "
     "will pick it up rather than guessing."
@@ -71,8 +78,11 @@ class ReplyGenerator:
             self._client = Client()
         return self._client
 
-    def generate(self, message: str) -> dict:
-        precedents = self.r.search(message, k=self.k)
+    def generate(self, message: str, precedents=None) -> dict:
+        # Caller may pass precedents it already retrieved (agent.py does, so
+        # the decision and the draft are grounded in the same evidence).
+        if precedents is None:
+            precedents = self.r.search(message, k=self.k)
         grounding = precedents[0].score if precedents else 0.0
 
         if self.tier == "trivial":
@@ -83,6 +93,9 @@ class ReplyGenerator:
             text = self.client.complete(
                 SYSTEM, build_prompt(message, precedents), max_tokens=300
             ).strip()
+            # Small models copy the precedents' agent initials ("^DW") despite
+            # the rule above. Strip them: a generated reply has no agent.
+            text = SIGNOFF.sub("", text).strip()
         else:
             raise ValueError(f"unknown tier: {self.tier}")
 
@@ -127,4 +140,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    utf8_console()
     main()

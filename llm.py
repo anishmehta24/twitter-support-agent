@@ -12,12 +12,21 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
 OLLAMA_URL = "http://127.0.0.1:11434"
+
+def utf8_console() -> None:
+    """Windows consoles default to cp1252; tweets contain emoji. Never crash on print."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 @dataclass
@@ -86,7 +95,7 @@ def _ollama(system: str, prompt: str, model: str, max_tokens: int):
 BACKENDS = {
     "anthropic": (_anthropic, "claude-haiku-4-5-20251001"),
     "openai": (_openai, "gpt-4o-mini"),
-    "ollama": (_ollama, "qwen2.5:7b"),
+    "ollama": (_ollama, "qwen2.5:3b"),
 }
 
 
@@ -101,7 +110,7 @@ def detect_backend() -> str:
     except Exception:
         raise SystemExit(
             "No LLM backend available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, "
-            "or run Ollama with a model pulled (ollama pull qwen2.5:7b)."
+            "or run Ollama with a model pulled (ollama pull qwen2.5:3b)."
         )
 
 
