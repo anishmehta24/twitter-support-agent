@@ -338,6 +338,13 @@ def write_results(res: dict) -> None:
         for t, v in res["replies"].items():
             L.append(f"| {t} | {v['n']} | " + " | ".join(f"{v[c]:.2f}" for c in CRITERIA)
                      + f" | {v['overall']:.2f} | {v['overall_weighted']:.2f} | {v['pct_send_ready']:.0f}% |")
+    if res.get("label_agreement"):
+        L += ["", "## Label reliability (agreement between annotation rounds)", "",
+              "| rounds | annotators | n | intent kappa | action kappa | intent agree | action agree |",
+              "|---|---|---|---|---|---|---|"]
+        for k, v in res["label_agreement"].items():
+            L.append(f"| {k} | {v['who']} | {v['n']} | {v['intent_kappa']:.3f} | "
+                     f"{v['action_kappa']:.3f} | {v['intent_agreement']:.1f}% | {v['action_agreement']:.1f}% |")
     if res.get("judge_agreement"):
         a = res["judge_agreement"]
         L += ["", f"## Judge vs human (n={a['n']})", "", "| criterion | agreement | kappa |", "|---|---|---|"]
@@ -409,6 +416,21 @@ def main() -> None:
         res["judge_agreement"] = agreement()
     except SystemExit:
         res["judge_agreement"] = None
+    # Label reliability: how much the rounds of the golden set agree with each
+    # other. When both rounds are model passes this is model-vs-model; a human
+    # round 3, if present, is compared against each.
+    from agreement import R1, R2, R3, load as load_round, pairwise, who
+    rounds = {k: load_round(p) for k, p in (("r1", R1), ("r2", R2), ("r3", R3))}
+    res["label_agreement"] = {}
+    if rounds["r1"] and rounds["r2"]:
+        res["label_agreement"]["r1_vs_r2"] = {
+            "who": f"{who(rounds['r1'])} vs {who(rounds['r2'])}",
+            **pairwise(rounds["r1"], rounds["r2"], "round 1", "round 2")}
+    for k in ("r1", "r2"):
+        if rounds["r3"] and rounds[k]:
+            res["label_agreement"][f"r3_vs_{k}"] = {
+                "who": f"{who(rounds['r3'])} vs {who(rounds[k])}",
+                **pairwise(rounds["r3"], rounds[k], "round 3", f"round {k[1]}")}
     res["seconds"] = time.time() - t0
     res["llm"] = str(client) if client else None
     write_results(res)

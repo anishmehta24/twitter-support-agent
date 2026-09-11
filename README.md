@@ -6,10 +6,11 @@ dataset (~2.8M tweets).
 
 **Status: work in progress.** The full pipeline and evaluation harness are
 built and have been run end to end; see [`results/RESULTS.md`](results/RESULTS.md).
-**Those numbers are against LLM-annotated labels** (round 1). The blind human
-round that makes them a real golden set has not been done yet, and neither has
-the human check on the judge. Until both are done, every number in `results/`
-measures agreement with a model, not with a person.
+**Those numbers are against model-annotated labels** (two independent model
+rounds, intent kappa 0.80 between them; results are scored against round 2).
+The blind human spot-check (`annotate.py --round 3`) and the human check on the
+judge (`judge.py --human`) have not been done yet. Until they are, every number
+in `results/` measures agreement with a model, not with a person.
 
 ---
 
@@ -28,17 +29,19 @@ python cluster_intents.py                # -> data/amazon_clusters.tsv, taxonomy
 python sample_golden.py                  # -> data/golden_pool.jsonl (250, stratified + weighted)
 python escalation.py                     # policy demo over worked cases
 
-# Golden set: LLM first pass, then a blind human pass that is the ground truth
-python label_golden.py                   # -> data/golden_r1.jsonl (annotator: <model>)
-python annotate.py --round 2 --blind     # -> data/golden_r2.jsonl (you, blind)
-python agreement.py                      # human-vs-LLM kappa per label
+# Golden set: two independent model passes, then a blind human spot-check
+python label_golden.py                   # -> data/golden_r1.jsonl (Gemini, annotator recorded)
+#   data/golden_r2.jsonl                 # second pass by a different model (Claude), committed
+python annotate.py --round 3 --blind     # -> data/golden_r3.jsonl (you, 50-row blind spot-check)
+python agreement.py                      # kappa: r1 vs r2, and r3 vs each
 
 python build_pairs.py                    # -> data/amazon_pairs.jsonl (grounding corpus)
 python agent.py "my parcel says delivered but i never got it"   # end to end
 
 # Evaluation - score against the HUMAN round, not the LLM one
 python evaluate.py --gold data/golden_r2.jsonl --skip-replies    # intent + escalation, no LLM, ~1 min
-python evaluate.py --gold data/golden_r2.jsonl --judge-model gemini-3.1-flash-lite  # + replies
+python evaluate.py --gold data/golden_r2.jsonl --model gemini-3.1-flash-lite --judge-model gemini-3.5-flash-lite
+#   ^ ~25s from the committed caches; ~450 calls and ~1 h on the Gemini free tier from scratch
 python judge.py --human --n 40           # score a blind subset yourself
 python judge.py --agreement              # judge vs human kappa
 ```
@@ -129,13 +132,14 @@ the overall rate settled at **2.1%**.
 
 ## Golden evaluation set
 
-250 examples, stratified and **weighted**. Labelled in two rounds against the
-same written guide (`ANNOTATION_GUIDE.md`): an LLM first pass
-(`label_golden.py`, provenance recorded per row as `annotator`), then a
-**blind human pass** (`annotate.py --round 2 --blind`) that is the ground
-truth everything is scored against. `agreement.py` reports human-vs-LLM kappa
-per label, which doubles as a measurement of how far the LLM's labels can be
-trusted on their own. Rare strata are deliberately
+250 examples, stratified and **weighted**. Labelled against the same written
+guide (`ANNOTATION_GUIDE.md`) in independent rounds, each row recording its
+`annotator`: round 1 by Gemini (`label_golden.py`), round 2 by Claude, and a
+**blind human spot-check** as round 3 (`annotate.py --round 3 --blind`, 50
+rows). `agreement.py` reports Cohen's kappa between every pair. Results are
+scored against round 2; the model-vs-model kappa is label reliability, the
+human-vs-model kappa on the subset is the number that says whether the models
+can be trusted as annotators at all. Rare strata are deliberately
 oversampled — hard triggers are 2.1% of the corpus, so a uniform sample would
 draw ~5 and leave the escalation policy unevaluable.
 
@@ -240,9 +244,9 @@ has been run, every judge number in `results/` is labelled unvalidated.
 
 ## Not done yet
 
-- **Blind human round on the golden set** (`annotate.py --round 2 --blind`,
-  250 messages) - the LLM round exists, but nothing is scored until the human
-  round does
+- **Blind human spot-check of the golden set** (`annotate.py --round 3 --blind`,
+  50 rows) - two model rounds exist and agree at kappa 0.80 on intent, but no
+  person has labelled anything yet
 - Human scoring of ~40 replies for judge validation
 - Report: results vs baselines, top-5 failure modes, "what is misleading about
   my headline number", decision log

@@ -95,9 +95,11 @@ def menu() -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--round", type=int, default=1, choices=(1, 2))
+    ap.add_argument("--round", type=int, default=1, choices=(1, 2, 3))
     ap.add_argument("--blind", action="store_true",
-                    help="round 2: do not show round-1 answers")
+                    help="round 2/3: do not show earlier answers")
+    ap.add_argument("--n", type=int, default=None,
+                    help="round 3: size of the random spot-check subset (default 50)")
     ap.add_argument("--review", action="store_true",
                     help="revisit only rows flagged unsure")
     args = ap.parse_args()
@@ -106,14 +108,25 @@ def main() -> None:
     path = out_path(args.round)
     done = load_done(path)
 
-    if args.round == 2:
-        # Different order in round 2 so position cannot cue recall.
-        random.seed(99)
+    if args.round >= 2:
+        # Different order in later rounds so position cannot cue recall.
+        random.seed(99 if args.round == 2 else 1234)
         random.shuffle(pool)
         r1 = load_done(out_path(1))
         if not r1:
             raise SystemExit("round 1 not started - run `python annotate.py` first")
         pool = [p for p in pool if p["id"] in r1]
+    if args.round == 3:
+        # Human spot-check when rounds 1 and 2 were both model passes: a
+        # random, stratum-spread subset. Small enough to actually get done,
+        # large enough that kappa against the model rounds means something.
+        n = args.n or 50
+        by_s: dict[str, list[dict]] = {}
+        for p in pool:
+            by_s.setdefault(p["stratum"], []).append(p)
+        share = n / len(pool)
+        pool = [p for s in sorted(by_s) for p in by_s[s][: max(2, round(len(by_s[s]) * share))]]
+        random.shuffle(pool)
 
     if args.review:
         todo = [p for p in pool if done.get(p["id"], {}).get("unsure")]
@@ -133,7 +146,7 @@ def main() -> None:
                   f"  lang={row['language']}")
             print("=" * 78)
             print(f"\n  {row['text']}\n")
-            if args.round == 2 and not args.blind:
+            if args.round >= 2 and not args.blind:
                 prev = load_done(out_path(1)).get(row["id"], {})
                 print(f"  (round 1 said: {prev.get('intent')} / {prev.get('action')})")
             print(menu())
@@ -191,6 +204,11 @@ def main() -> None:
         print("Wait a day, then: python annotate.py --round 2 --blind")
     else:
         print("Now: python agreement.py")
+
+
+# Round 3 is the human pass when rounds 1 and 2 were model passes. The
+# agreement it yields is human-vs-model on a subset, which is the honest
+# number to report in that situation.
 
 
 if __name__ == "__main__":
