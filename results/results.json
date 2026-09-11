@@ -1,0 +1,443 @@
+{
+  "n": 250,
+  "gold_file": "golden_r1.jsonl",
+  "limit": null,
+  "classifier": "llm",
+  "llm": "gemini/gemini-3.1-flash-lite (0 calls, 0 in / 0 out tokens)",
+  "annotators": {
+    "gemini-3.5-flash": 190,
+    "gemini-3.5-flash-lite": 60
+  },
+  "intent": {
+    "majority": {
+      "accuracy": 0.22,
+      "accuracy_weighted": 0.26072848582788666,
+      "macro_f1": 0.036065573770491806,
+      "macro_f1_weighted": 0.041361560202500355,
+      "accuracy_clean": 0.24102564102564103,
+      "n_clean": 195,
+      "per_stratum_accuracy": {
+        "core": 0.3,
+        "hard_trigger": 0.025,
+        "non_english": 0.26666666666666666,
+        "short_or_fragment": 0.03333333333333333
+      },
+      "per_class_f1": {
+        "delivery_delayed": {
+          "f1": 0.36065573770491804,
+          "n": 55
+        },
+        "delivery_not_received": {
+          "f1": 0.0,
+          "n": 16
+        },
+        "item_damaged_wrong_missing": {
+          "f1": 0.0,
+          "n": 23
+        },
+        "order_cancel_or_change": {
+          "f1": 0.0,
+          "n": 7
+        },
+        "refund_or_return": {
+          "f1": 0.0,
+          "n": 19
+        },
+        "payment_or_charge": {
+          "f1": 0.0,
+          "n": 22
+        },
+        "prime_membership": {
+          "f1": 0.0,
+          "n": 21
+        },
+        "account_access": {
+          "f1": 0.0,
+          "n": 26
+        },
+        "service_complaint_or_feedback": {
+          "f1": 0.0,
+          "n": 31
+        },
+        "other": {
+          "f1": 0.0,
+          "n": 30
+        }
+      },
+      "confusions": [
+        {
+          "gold": "service_complaint_or_feedback",
+          "pred": "delivery_delayed",
+          "n": 31
+        },
+        {
+          "gold": "other",
+          "pred": "delivery_delayed",
+          "n": 30
+        },
+        {
+          "gold": "account_access",
+          "pred": "delivery_delayed",
+          "n": 26
+        },
+        {
+          "gold": "item_damaged_wrong_missing",
+          "pred": "delivery_delayed",
+          "n": 23
+        },
+        {
+          "gold": "payment_or_charge",
+          "pred": "delivery_delayed",
+          "n": 22
+        }
+      ]
+    },
+    "keyword": {
+      "accuracy": 0.472,
+      "accuracy_weighted": 0.49823678589428716,
+      "macro_f1": 0.47882273452605933,
+      "macro_f1_weighted": 0.5090680403475181,
+      "accuracy_clean": 0.5025641025641026,
+      "n_clean": 195,
+      "per_stratum_accuracy": {
+        "core": 0.5466666666666666,
+        "hard_trigger": 0.425,
+        "non_english": 0.16666666666666666,
+        "short_or_fragment": 0.4666666666666667
+      },
+      "per_class_f1": {
+        "delivery_delayed": {
+          "f1": 0.5043478260869565,
+          "n": 55
+        },
+        "delivery_not_received": {
+          "f1": 0.4615384615384615,
+          "n": 16
+        },
+        "item_damaged_wrong_missing": {
+          "f1": 0.22222222222222218,
+          "n": 23
+        },
+        "order_cancel_or_change": {
+          "f1": 0.5454545454545454,
+          "n": 7
+        },
+        "refund_or_return": {
+          "f1": 0.5294117647058824,
+          "n": 19
+        },
+        "payment_or_charge": {
+          "f1": 0.4848484848484849,
+          "n": 22
+        },
+        "prime_membership": {
+          "f1": 0.6222222222222222,
+          "n": 21
+        },
+        "account_access": {
+          "f1": 0.7000000000000001,
+          "n": 26
+        },
+        "service_complaint_or_feedback": {
+          "f1": 0.3181818181818182,
+          "n": 31
+        },
+        "other": {
+          "f1": 0.39999999999999997,
+          "n": 30
+        }
+      },
+      "confusions": [
+        {
+          "gold": "delivery_delayed",
+          "pred": "other",
+          "n": 14
+        },
+        {
+          "gold": "item_damaged_wrong_missing",
+          "pred": "other",
+          "n": 11
+        },
+        {
+          "gold": "service_complaint_or_feedback",
+          "pred": "other",
+          "n": 10
+        },
+        {
+          "gold": "payment_or_charge",
+          "pred": "other",
+          "n": 9
+        },
+        {
+          "gold": "account_access",
+          "pred": "other",
+          "n": 8
+        }
+      ]
+    },
+    "llm": {
+      "accuracy": 0.764,
+      "accuracy_weighted": 0.7697945583564668,
+      "macro_f1": 0.7502454745952526,
+      "macro_f1_weighted": 0.7547920533913661,
+      "accuracy_clean": 0.8205128205128205,
+      "n_clean": 195,
+      "per_stratum_accuracy": {
+        "core": 0.7733333333333333,
+        "hard_trigger": 0.725,
+        "non_english": 0.8333333333333334,
+        "short_or_fragment": 0.7
+      },
+      "per_class_f1": {
+        "delivery_delayed": {
+          "f1": 0.8256880733944955,
+          "n": 55
+        },
+        "delivery_not_received": {
+          "f1": 0.875,
+          "n": 16
+        },
+        "item_damaged_wrong_missing": {
+          "f1": 0.7804878048780488,
+          "n": 23
+        },
+        "order_cancel_or_change": {
+          "f1": 0.4444444444444444,
+          "n": 7
+        },
+        "refund_or_return": {
+          "f1": 0.6875,
+          "n": 19
+        },
+        "payment_or_charge": {
+          "f1": 0.7804878048780488,
+          "n": 22
+        },
+        "prime_membership": {
+          "f1": 0.8500000000000001,
+          "n": 21
+        },
+        "account_access": {
+          "f1": 0.8444444444444443,
+          "n": 26
+        },
+        "service_complaint_or_feedback": {
+          "f1": 0.71875,
+          "n": 31
+        },
+        "other": {
+          "f1": 0.6956521739130435,
+          "n": 30
+        }
+      },
+      "confusions": [
+        {
+          "gold": "delivery_delayed",
+          "pred": "order_cancel_or_change",
+          "n": 7
+        },
+        {
+          "gold": "account_access",
+          "pred": "other",
+          "n": 5
+        },
+        {
+          "gold": "other",
+          "pred": "order_cancel_or_change",
+          "n": 4
+        },
+        {
+          "gold": "refund_or_return",
+          "pred": "delivery_delayed",
+          "n": 3
+        },
+        {
+          "gold": "service_complaint_or_feedback",
+          "pred": "delivery_delayed",
+          "n": 3
+        }
+      ]
+    }
+  },
+  "escalation": {
+    "n_escalate_gold": 135,
+    "n_auto_gold": 115,
+    "escalate_everything": {
+      "expected_cost": 115.0,
+      "false_auto": 0,
+      "false_escalate": 115
+    },
+    "auto_everything": {
+      "expected_cost": 1350.0,
+      "false_auto": 135,
+      "false_escalate": 0
+    },
+    "predicted_intent": {
+      "accuracy": 0.564,
+      "accuracy_weighted": 0.5161085288682309,
+      "escalate_precision": 0.589041095890411,
+      "escalate_recall": 0.6370370370370371,
+      "false_auto": 49,
+      "false_escalate": 60,
+      "false_auto_weighted": 61.6331,
+      "false_escalate_weighted": 59.3388,
+      "expected_cost": 550.0,
+      "expected_cost_weighted": 675.6698,
+      "auto_rate": 0.416,
+      "auto_rate_weighted": 0.5190857526860215,
+      "gates": {
+        "intent_policy": 84,
+        "passed_all": 104,
+        "language": 22,
+        "hard_trigger": 40
+      },
+      "false_auto_examples": [
+        {
+          "id": "t10446",
+          "text": "so I look to see if my parcel has been deliver and it was given to the neighbour, and now they say they never got it? Problem?",
+          "gold_intent": "delivery_not_received",
+          "pred_intent": "delivery_not_received",
+          "reason": "intent 'delivery_not_received' (standard first-response is a documented checklist); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t10549",
+          "text": "Can you help me make an A-Z claim its been 4ihrs since you sent the seller an email still no response and now almost 3 days late",
+          "gold_intent": "refund_or_return",
+          "pred_intent": "delivery_delayed",
+          "reason": "intent 'delivery_delayed' (status/ETA guidance is a standard grounded reply); confidence 0.90, grounding 1.00"
+        },
+        {
+          "id": "t11029",
+          "text": "Can I have a contact telephone number for your Executive Customer Relations Complaint team. I have an open complaint there",
+          "gold_intent": "service_complaint_or_feedback",
+          "pred_intent": "service_complaint_or_feedback",
+          "reason": "intent 'service_complaint_or_feedback' (acknowledgement; praise needs no action); confidence 0.90, grounding 1.00"
+        },
+        {
+          "id": "t11222",
+          "text": "Hi,im going to return something but having issues. 1) Hermes havent come collect. 2) I dont have the original Amazon box",
+          "gold_intent": "refund_or_return",
+          "pred_intent": "refund_or_return",
+          "reason": "intent 'refund_or_return' (return process is publicly documented and stable); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t11588",
+          "text": "is this email from you as i have an order placed for delivery today & now i'm confused",
+          "gold_intent": "account_access",
+          "pred_intent": "order_cancel_or_change",
+          "reason": "intent 'order_cancel_or_change' (self-serve cancellation path is well documented); confidence 0.90, grounding 1.00"
+        }
+      ]
+    },
+    "gold_intent": {
+      "accuracy": 0.572,
+      "accuracy_weighted": 0.5244617956943656,
+      "escalate_precision": 0.5933333333333334,
+      "escalate_recall": 0.6592592592592592,
+      "false_auto": 46,
+      "false_escalate": 61,
+      "false_auto_weighted": 58.263799999999996,
+      "false_escalate_weighted": 60.6198,
+      "expected_cost": 521.0,
+      "expected_cost_weighted": 643.2577999999999,
+      "auto_rate": 0.4,
+      "auto_rate_weighted": 0.500484403875231,
+      "gates": {
+        "passed_all": 100,
+        "intent_policy": 91,
+        "hard_trigger": 40,
+        "language": 19
+      },
+      "false_auto_examples": [
+        {
+          "id": "t10008",
+          "text": "Who do I need to contact about exchanging a book whose return window closed but it's a misprint to get a new, correct copy?",
+          "gold_intent": "refund_or_return",
+          "pred_intent": "refund_or_return",
+          "reason": "intent 'refund_or_return' (return process is publicly documented and stable); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t10446",
+          "text": "so I look to see if my parcel has been deliver and it was given to the neighbour, and now they say they never got it? Problem?",
+          "gold_intent": "delivery_not_received",
+          "pred_intent": "delivery_not_received",
+          "reason": "intent 'delivery_not_received' (standard first-response is a documented checklist); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t10549",
+          "text": "Can you help me make an A-Z claim its been 4ihrs since you sent the seller an email still no response and now almost 3 days late",
+          "gold_intent": "refund_or_return",
+          "pred_intent": "refund_or_return",
+          "reason": "intent 'refund_or_return' (return process is publicly documented and stable); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t11029",
+          "text": "Can I have a contact telephone number for your Executive Customer Relations Complaint team. I have an open complaint there",
+          "gold_intent": "service_complaint_or_feedback",
+          "pred_intent": "service_complaint_or_feedback",
+          "reason": "intent 'service_complaint_or_feedback' (acknowledgement; praise needs no action); confidence 1.00, grounding 1.00"
+        },
+        {
+          "id": "t11222",
+          "text": "Hi,im going to return something but having issues. 1) Hermes havent come collect. 2) I dont have the original Amazon box",
+          "gold_intent": "refund_or_return",
+          "pred_intent": "refund_or_return",
+          "reason": "intent 'refund_or_return' (return process is publicly documented and stable); confidence 1.00, grounding 1.00"
+        }
+      ]
+    }
+  },
+  "judge_llm": "gemini/gemini-3.5-flash-lite (0 calls, 0 in / 0 out tokens)",
+  "replies": {
+    "trivial": {
+      "n": 250,
+      "grounded": 0.328,
+      "grounded_weighted": 0.3428771430171441,
+      "safe": 1.0,
+      "safe_weighted": 1.0,
+      "actionable": 0.8,
+      "actionable_weighted": 0.8036060288482308,
+      "on_tone": 0.624,
+      "on_tone_weighted": 0.640655925247402,
+      "overall": 2.364,
+      "overall_weighted": 2.40187361498892,
+      "degenerate": false,
+      "mean_len": 96.0,
+      "pct_send_ready": 18.8
+    },
+    "nearest_neighbour": {
+      "n": 250,
+      "grounded": 0.952,
+      "grounded_weighted": 0.9522096176769415,
+      "safe": 0.996,
+      "safe_weighted": 0.9962003696029568,
+      "actionable": 0.96,
+      "actionable_weighted": 0.961703693629549,
+      "on_tone": 0.964,
+      "on_tone_weighted": 0.9662573300586405,
+      "overall": 4.784,
+      "overall_weighted": 4.778094224753798,
+      "degenerate": false,
+      "mean_len": 123.492,
+      "pct_send_ready": 94.0
+    },
+    "grounded_llm": {
+      "n": 250,
+      "grounded": 0.98,
+      "grounded_weighted": 0.9803150425203402,
+      "safe": 0.992,
+      "safe_weighted": 0.9943627549020392,
+      "actionable": 0.892,
+      "actionable_weighted": 0.8930383443067544,
+      "on_tone": 0.98,
+      "on_tone_weighted": 0.9789906319250554,
+      "overall": 4.692,
+      "overall_weighted": 4.709083672669381,
+      "degenerate": false,
+      "mean_len": 130.04,
+      "pct_send_ready": 89.2
+    }
+  },
+  "judge_agreement": null,
+  "seconds": 26.35267686843872
+}

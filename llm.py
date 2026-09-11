@@ -4,7 +4,8 @@
 Deliberately dependency-free (urllib, not the vendor SDKs) so the repo installs
 with just scikit-learn and the pipeline stays reproducible in under 15 minutes.
 
-Providers are tried in order: Anthropic, OpenAI, then a local Ollama. Every call
+Providers are tried in order: Anthropic, OpenAI, Gemini, then a local Ollama.
+Keys are read from the environment or a local .env (gitignored). Every call
 returns (text, input_tokens, output_tokens) so cost per unit of work is measured
 rather than assumed.
 """
@@ -19,6 +20,24 @@ import urllib.request
 from dataclasses import dataclass
 
 OLLAMA_URL = "http://127.0.0.1:11434"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+
+def _load_dotenv() -> None:
+    """KEY=VALUE lines from ./.env into the environment, never overriding."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(p):
+        return
+    for line in open(p, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 
 def utf8_console() -> None:
     """Windows consoles default to cp1252; tweets contain emoji. Never crash on print."""
@@ -79,6 +98,21 @@ def _openai(system: str, prompt: str, model: str, max_tokens: int):
             u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
 
 
+def _gemini(system: str, prompt: str, model: str, max_tokens: int):
+    key = os.environ.get("GEMINI_API_KEY") or os.environ["GOOGLE_API_KEY"]
+    r = _post(
+        f"{GEMINI_URL}/{model}:generateContent",
+        {"systemInstruction": {"parts": [{"text": system}]},
+         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+         "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}},
+        {"x-goog-api-key": key},
+    )
+    parts = r["candidates"][0]["content"]["parts"]
+    u = r.get("usageMetadata", {})
+    return ("".join(p.get("text", "") for p in parts),
+            u.get("promptTokenCount", 0), u.get("candidatesTokenCount", 0))
+
+
 def _ollama(system: str, prompt: str, model: str, max_tokens: int):
     r = _post(
         f"{OLLAMA_URL}/api/chat",
@@ -95,6 +129,10 @@ def _ollama(system: str, prompt: str, model: str, max_tokens: int):
 BACKENDS = {
     "anthropic": (_anthropic, "claude-haiku-4-5-20251001"),
     "openai": (_openai, "gpt-4o-mini"),
+    # flash-lite, not flash: the free tier allows far more requests/day on
+    # lite, and a full evaluate.py run is ~450 calls. (2.5-lite is closed to
+    # new users as of 2026-09; the API's own 404 points at 3.5-lite.)
+    "gemini": (_gemini, "gemini-3.5-flash-lite"),
     "ollama": (_ollama, "qwen2.5:3b"),
 }
 
@@ -104,12 +142,14 @@ def detect_backend() -> str:
         return "anthropic"
     if os.environ.get("OPENAI_API_KEY"):
         return "openai"
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return "gemini"
     try:
         urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3)
         return "ollama"
     except Exception:
         raise SystemExit(
-            "No LLM backend available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, "
+            "No LLM backend available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY, "
             "or run Ollama with a model pulled (ollama pull qwen2.5:3b)."
         )
 
@@ -127,7 +167,7 @@ def preflight(backend: str, model: str) -> None:
         raise SystemExit(
             "Ollama is running but has no models pulled.\n"
             f"  Run:  ollama pull {model}\n"
-            "  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY."
+            "  Or set ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY."
         )
     if not any(m == model or m.startswith(model + ":") for m in have):
         raise SystemExit(
@@ -146,7 +186,7 @@ class Client:
         self.usage = Usage()
 
     def complete(self, system: str, prompt: str, max_tokens: int = 2048,
-                 retries: int = 3) -> str:
+                 retries: int = 5) -> str:
         last: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
@@ -154,10 +194,13 @@ class Client:
                 self.usage.add(i_tok, o_tok)
                 return text
             except (urllib.error.HTTPError, urllib.error.URLError,
-                    KeyError, json.JSONDecodeError) as e:
+                    KeyError, IndexError, json.JSONDecodeError) as e:
                 last = e
                 if attempt < retries:
-                    time.sleep(2 ** attempt)
+                    # 429 on a free tier is a per-minute window, not a fault:
+                    # wait it out rather than burn the remaining retries.
+                    rate_limited = isinstance(e, urllib.error.HTTPError) and e.code == 429
+                    time.sleep(max(20, 2 ** attempt) if rate_limited else 2 ** attempt)
         raise RuntimeError(f"LLM call failed after {retries} attempts: {last}")
 
     def __str__(self) -> str:

@@ -4,11 +4,12 @@ Intent classification, grounded reply drafting, and escalation routing over the
 [Customer Support on Twitter](https://www.kaggle.com/datasets/thoughtvector/customer-support-on-twitter)
 dataset (~2.8M tweets).
 
-**Status: work in progress.** Brand selection, intent taxonomy, escalation
-policy, retrieval, reply generation, the end-to-end agent and the evaluation
-harness are built. The golden set is sampled but **not yet hand-labelled**, so
-there are no headline numbers yet - `results/` is empty by design until
-`annotate.py` has been run.
+**Status: work in progress.** The full pipeline and evaluation harness are
+built and have been run end to end; see [`results/RESULTS.md`](results/RESULTS.md).
+**Those numbers are against LLM-annotated labels** (round 1). The blind human
+round that makes them a real golden set has not been done yet, and neither has
+the human check on the judge. Until both are done, every number in `results/`
+measures agreement with a model, not with a person.
 
 ---
 
@@ -18,6 +19,7 @@ there are no headline numbers yet - `results/` is empty by design until
 ./scripts/fetch_data.sh                  # 516 MB, not committed
 python -m venv .venv && .venv/Scripts/activate
 pip install scikit-learn
+cp .env.example .env                     # optional: add an API key
 
 python brand_stats.py                    # brand volume + thread shape
 python deflection.py                     # how substantive is each brand's support?
@@ -26,21 +28,27 @@ python cluster_intents.py                # -> data/amazon_clusters.tsv, taxonomy
 python sample_golden.py                  # -> data/golden_pool.jsonl (250, stratified + weighted)
 python escalation.py                     # policy demo over worked cases
 
+# Golden set: LLM first pass, then a blind human pass that is the ground truth
+python label_golden.py                   # -> data/golden_r1.jsonl (annotator: <model>)
+python annotate.py --round 2 --blind     # -> data/golden_r2.jsonl (you, blind)
+python agreement.py                      # human-vs-LLM kappa per label
+
 python build_pairs.py                    # -> data/amazon_pairs.jsonl (grounding corpus)
 python agent.py "my parcel says delivered but i never got it"   # end to end
 
-# Evaluation (needs data/golden_r1.jsonl from annotate.py)
-python evaluate.py --skip-replies        # intent + escalation, no LLM needed, ~1 min
-python evaluate.py --limit 60            # + reply drafting and judging on a stratified slice
+# Evaluation - score against the HUMAN round, not the LLM one
+python evaluate.py --gold data/golden_r2.jsonl --skip-replies    # intent + escalation, no LLM, ~1 min
+python evaluate.py --gold data/golden_r2.jsonl --judge-model gemini-3.1-flash-lite  # + replies
 python judge.py --human --n 40           # score a blind subset yourself
 python judge.py --agreement              # judge vs human kappa
 ```
 
-LLM backend is auto-detected: `ANTHROPIC_API_KEY`, then `OPENAI_API_KEY`,
-then a local Ollama (`ollama pull qwen2.5:3b`). Without any, `agent.py` and
-`evaluate.py` fall back to the keyword classifier and skip reply drafting.
-All LLM outputs are cached by message id under `data/` so a re-run never
-pays twice.
+LLM backend is auto-detected: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`GEMINI_API_KEY` (free tier is enough for a full run), then a local Ollama
+(`ollama pull qwen2.5:3b`). Keys can live in a gitignored `.env`. Without
+any, `agent.py` and `evaluate.py` fall back to the keyword classifier and
+skip reply drafting. All LLM outputs are cached by message id under `data/`
+so a re-run never pays twice.
 
 Everything is seeded. `data/golden_pool.jsonl` is committed so the evaluation
 set is pinned and identical across runs.
@@ -121,7 +129,13 @@ the overall rate settled at **2.1%**.
 
 ## Golden evaluation set
 
-250 examples, stratified and **weighted**. Rare strata are deliberately
+250 examples, stratified and **weighted**. Labelled in two rounds against the
+same written guide (`ANNOTATION_GUIDE.md`): an LLM first pass
+(`label_golden.py`, provenance recorded per row as `annotator`), then a
+**blind human pass** (`annotate.py --round 2 --blind`) that is the ground
+truth everything is scored against. `agreement.py` reports human-vs-LLM kappa
+per label, which doubles as a measurement of how far the LLM's labels can be
+trusted on their own. Rare strata are deliberately
 oversampled — hard triggers are 2.1% of the corpus, so a uniform sample would
 draw ~5 and leave the escalation policy unevaluable.
 
@@ -195,6 +209,7 @@ build_pairs.py       (customer -> Amazon reply) grounding corpus
 retrieve.py          TF-IDF -> LSA -> cosine retrieval; supplies grounding score
 reply.py             three reply tiers: trivial / nearest-neighbour / grounded LLM
 classify.py          three intent classifiers: majority / keyword / LLM
+label_golden.py      LLM first-pass labels for the golden set (round 1)
 agent.py             end to end: classify -> retrieve -> decide -> draft
 sample_golden.py     stratified + weighted golden-set sampler
 annotate.py          keyboard-driven human annotation, two rounds
@@ -225,9 +240,9 @@ has been run, every judge number in `results/` is labelled unvalidated.
 
 ## Not done yet
 
-- **Human annotation of the golden set** (250 messages, two blind rounds) -
-  everything above is built and smoke-tested, but there are no real numbers
-  until this is done
+- **Blind human round on the golden set** (`annotate.py --round 2 --blind`,
+  250 messages) - the LLM round exists, but nothing is scored until the human
+  round does
 - Human scoring of ~40 replies for judge validation
 - Report: results vs baselines, top-5 failure modes, "what is misleading about
   my headline number", decision log
