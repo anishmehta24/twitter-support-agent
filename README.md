@@ -199,6 +199,201 @@ here"*. A generator grounded in these learns to deflect politely, and will score
 well against a judge rewarding tone and groundedness **while resolving nothing**.
 No automated metric in this repo can see that.
 
+## Report
+
+Numbers below are from `results/RESULTS.md`, scored against round-2 labels.
+**No human has labelled anything yet** (see [Golden evaluation set](#golden-evaluation-set));
+treat every figure as agreement with a model until round 3 exists.
+
+### 1. Problem framing
+
+**What "good" means for AmazonHelp.** A public tweet reply cannot see the
+account, cannot move money, and is read by everyone. So "good" is not
+"resolves the case" - almost nothing resolvable happens in this channel - it
+is: (a) never auto-handle something that needed a human, (b) when it does
+reply, say what Amazon would actually have said, and (c) be honest about how
+often (a) fails. I therefore optimise for a **cost-weighted escalation
+error** (a false auto-handle costs 10x a needless escalation; the ratio is
+stated in `escalation.py`, not implied) before reply quality, and I treat the
+intent label as an input to that decision rather than as the product.
+
+**What I chose not to build.** No fine-tuned classifier (250 labels is an
+evaluation set, not a training set). No embedding retrieval (TF-IDF + LSA
+runs on CPU in seconds and the grounding score it produces is the thing the
+policy needs; swapping in sentence-transformers is a one-function change and
+a legitimate follow-up experiment). No multi-turn handling: only conversation
+openers are classified and indexed, because mid-thread turns ("yes the second
+one") assume context the system does not have. No Banking77 transfer - its
+77 intents are a different domain and would have made the taxonomy look more
+principled than the data supports.
+
+### 2. Results against baselines
+
+| Decision | Trivial baseline | Simple baseline | System |
+|---|---|---|---|
+| Intent (macro-F1, weighted) | majority class **0.04** | keyword rules **0.50** | LLM **0.77** (acc 0.77; 0.84 on rows neither annotator flagged) |
+| Escalation (cost @ 10:1, 250 rows) | escalate everything **131** | - | four-gate policy **500** (442 with gold intent) |
+| Reply quality (judge, 1-5) | canned reply **2.36** | nearest historical reply **4.78** | grounded LLM **4.69** |
+
+Two of three rows go the wrong way, and that is the result.
+
+- **The escalation policy loses to "escalate everything."** With a 10:1 cost
+  ratio, 43 false auto-handles (430) outweigh the 104 tickets it kept off a
+  human's queue. Feeding it the *gold* intent only improves it to 442, so
+  this is the policy, not the classifier: `AUTO_OK` permits
+  `refund_or_return` and `delivery_not_received`, and both annotators say
+  those usually need account access (9 and 7 false-autos respectively).
+  The honest headline is: **as configured, the agent should not be switched
+  on**; the auto-rate needed to break even at 10:1 is far higher than the
+  precision of the gates allows.
+- **The nearest-neighbour reply beats the LLM.** Returning Amazon's actual
+  reply to the most similar past message scores 4.78; composing a new one
+  from the top-5 precedents scores 4.69. The support corpus is repetitive
+  enough that verbatim recall is a very hard bar - as `reply.py` predicted
+  before any of this was measured. The LLM wins only on non-English (4.80 vs
+  4.73) and fragments (4.77 vs 4.47), where the nearest precedent is a weak
+  match.
+- **The LLM classifier is near the ceiling.** 0.77 accuracy against a
+  ceiling of ~0.63-0.84 (13 rows multi-intent, 79 flagged unsure by round 2;
+  0.84 on the unflagged rows). Most remaining error is taxonomy, not model
+  (see failure 3).
+
+### 3. Failure analysis - top five
+
+1. **Grounded replies address the customer by a previous customer's name.**
+   The nearest-neighbour tier returns *"I'm sorry you're having a poor
+   experience with our support, **Grace**."* to a customer who is not Grace
+   (t10211); *"Thank you for your feedback, **Anand**."* (t10466). A crude
+   scan finds dozens of such rows in the nearest-neighbour tier and a
+   handful in the LLM tier even after the prompt forbids it. The judge gave
+   these 4-5/5. *Hypothesis:* names are not in the retrieval signal and the
+   judge rubric never asks "is the name right"; fix is a post-filter that
+   strips any capitalised token absent from the incoming message, and a
+   rubric line for it.
+2. **Hard triggers fire on vocabulary, not situations.** 9 of 131 gold-auto
+   rows were escalated by a hard trigger: `#Fraud` used as a hashtag on a
+   late-delivery rant (t12200), *"who do we send scam emails to?"* (t15079 -
+   a how-to with a documented public answer), *"thank you for the quick
+   resolution and response to my account being compromised"* (t2069 -
+   praise), and `\bpress\b` in *"press play"* matching the media trigger
+   (t566). Earlier passes already removed `fire` (Fire TV) and `shock`
+   (shockingly); this is the same failure mode with the next layer of words.
+   *Hypothesis:* keyword triggers have a floor on precision; the right shape
+   is a small classifier over the trigger *plus* intent, or at minimum
+   negation/hashtag handling.
+3. **`delivery_delayed` vs `order_cancel_or_change` is a taxonomy bug, not a
+   model bug.** Five of the LLM's confusions are *"why hasn't my order been
+   shipped yet"*, *"is it normal my order is 2 days in preparing shipment"* -
+   labelled delayed by both annotators, predicted cancel/change by the model.
+   The taxonomy text for `order_cancel_or_change` says *"or query an order's
+   status pre-delivery"*, which is exactly these messages. The two annotators
+   disagreed on 43/250 intents (kappa 0.80); the pairs they disagreed on are
+   `item_damaged` vs `other` (6), `delivery_delayed` vs `complaint` (5),
+   `other` vs `complaint` (5). *Hypothesis:* fix the one sentence, relabel,
+   expect ~2 points of macro-F1 back.
+4. **The judge does not enforce its own rubric.** The canned reply *"Sorry
+   for the trouble! Please reach out to us here"* was scored `actionable=1`
+   on 200 of 250 rows, although the rubric says "contact us" alone is not
+   actionable. Its rationales praise tone. *Hypothesis:* the judge reads
+   politeness as progress; with the human check outstanding, every reply
+   score in this report should be read as an upper bound, and the 94%
+   "send-ready" figure for nearest-neighbour is the single most inflated
+   number in the results.
+5. **The language gate escalates messages the system could have answered.**
+   17-22 rows escalate purely for being non-English, but the grounding
+   corpus contains German, French and Spanish replies and retrieval finds
+   them (a German account-recovery question gets Amazon.de's actual German
+   answer). *Hypothesis:* the gate was written before the corpus was
+   measured; it should be per-language grounding, not a blanket rule.
+
+### 4. What is misleading about my headline number
+
+If I had to quote one number it would be *"0.77 macro-F1 and 4.7/5 reply
+quality"*, and both are misleading in specific ways:
+
+- **Nobody human has labelled the golden set.** Both rounds are models. Their
+  agreement (kappa 0.80 on intent, **0.59 on the auto/escalate action**) is
+  label reliability between two models that were trained on similar data
+  and share blind spots; it is not evidence that either matches a support
+  lead. The action label - the one that carries the 10:1 cost - is the one
+  they agree on least.
+- **The reply judge is unvalidated and demonstrably lenient** (failure 4).
+  4.7/5 measures "sounds like Amazon", not "helps the customer".
+- **The eval set is not the population.** Hard triggers are 16% of the set
+  and 2% of traffic; the `weight` column corrects for this and the
+  weight-corrected numbers are the ones in the tables, but per-stratum
+  accuracy on 30-40 rows has wide intervals I have not computed.
+- **The classifier under test and one of the annotators are sibling
+  models** (Gemini 3.1 Flash-Lite classifies; Gemini 3.5 Flash/Flash-Lite
+  labelled round 1). Scoring against round 2 (Claude) reduces but does not
+  remove that circularity.
+- **Reply quality is measured on all 250 messages, including the ones the
+  policy would escalate.** In production the LLM only speaks on the 42% it
+  auto-handles; its score on that subset is not separately reported.
+- **"Grounded in the brand's history" inherits the brand's history.**
+  Amazon's public replies are overwhelmingly polite redirects. A generator
+  that reproduces them faithfully scores 0.98 on "grounded" while resolving
+  nothing, and no automated metric in this repo can see that.
+
+### 5. With one more week
+
+1. Human round 3 on 50 rows and 40 judged replies - two hours of work that
+   turns every caveat above into a number.
+2. Retune the policy against the measured cost: drop `refund_or_return` and
+   `delivery_not_received` from `AUTO_OK`, re-run, and report the cost curve
+   across auto-rate rather than a single operating point.
+3. Fix the taxonomy sentence (failure 3), the name post-filter (failure 1),
+   and make the language gate per-language grounding (failure 5). Each is a
+   one-line change with a cached, 25-second re-evaluation.
+4. Split the reply evaluation by policy decision, so the LLM is scored only
+   where it would actually speak.
+5. Embedding retrieval as a controlled comparison against TF-IDF + LSA,
+   reported as grounding-score AUC against the escalate/auto labels.
+
+## Decision log
+
+- **AmazonHelp over AppleSupport** despite Apple having 2.5x the
+  conversations: 52.5% of Apple's replies are DM deflections, which are
+  worthless as grounding material. Measured with `deflection.py` before
+  choosing.
+- **Escalation is the default and must be earned** through four ordered
+  gates, because the cost is asymmetric. The 10:1 ratio is a stated
+  assumption, not a fit.
+- **Hard triggers override confidence.** A 0.99-confident `delivery_delayed`
+  containing "someone used my card" still escalates.
+- **Grounding score is an escalation gate**, not just a retrieval by-product:
+  no comparable precedent means the agent would be improvising, which is
+  exactly when it should not speak.
+- **Only openers are classified and indexed.** Mid-thread turns assume
+  context the system does not have at query time.
+- **Two delivery intents, not one.** "Still waiting" and "marked delivered
+  but missing" share vocabulary and have different resolution paths.
+- **Language is a confound, not an intent.** Three of fifteen clusters were
+  languages; they are recorded as a separate field and the taxonomy is
+  language-independent.
+- **Stratified, weighted golden set** rather than a uniform sample: a
+  uniform 250 would hold ~5 hard triggers and the escalation policy would be
+  unevaluable. Every row carries `population_share / sample_share`.
+- **`multi` and `unsure` flags are reported, not cleaned.** They are the
+  ceiling on what any single-label classifier can be shown to achieve.
+- **Annotation guide written before any labelling**, and the identical text
+  is the LLM annotator's system prompt, so every annotator - model or human -
+  is held to the same tie-break rules.
+- **Two independent model annotation rounds with provenance per row**, then
+  a blind human spot-check, rather than presenting model labels as
+  hand-labelled. The kappa between rounds is reported as label reliability.
+- **Judge is a different model from the generator** (3.5 Flash-Lite judges
+  3.1 Flash-Lite), and the judge prompt contains no example numbers - a small
+  model copied the example `0,1,0,1,3` verbatim for every reply until it was
+  removed. A degenerate-judge detector now flags identical score vectors.
+- **Trivial and nearest-neighbour baselines built and scored before the
+  LLM tier**, so its number had a denominator on the day it was measured.
+- **All LLM outputs cached by message id and committed.** `results/`
+  regenerates in ~25 seconds with no API key; the full run is ~450 calls.
+- **Pure-Python streaming over the 2.8M-row CSV, no pandas.** The whole
+  pipeline fits in well under 1 GB, which mattered on the 7 GB machine it was
+  built on.
+
 ## Layout
 
 ```
